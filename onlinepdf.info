@@ -1,0 +1,5 @@
+name = OnlinePDF
+description = online-pdf.org pdfjpg fork
+package = Custom
+core = 7.x
+

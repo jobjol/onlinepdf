@@ -1,0 +1,252 @@
+<?php
+include_once "onlinepdf_form_alter.inc";
+include_once "onlinepdf_node_validate.inc";
+include_once "onlinepdf_batch_operations.inc";
+
+/**
+* Implementation of hook_menu
+*/
+function onlinepdf_menu() {
+    $items['node/%node/zip'] = array(
+      'title' => t('Download as ZIP'),
+      'page callback' => 'onlinepdf_zip',
+      'access callback' => TRUE,
+      'type' => MENU_LOCAL_TASK,
+    );
+    $items['dwnld'] = array(
+      'title' => 'Download direct',
+      'page callback' => 'onlinepdf_force_download',
+      'access callback' => TRUE,
+      'type' => MENU_CALLBACK,
+    );
+    // Admin pages.
+    $items['admin/config/system/onlinepdf'] = array(
+    'title' => t('Onlinepdf'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('onlinepdf_service_configuration_form'),
+    'access arguments' => array('administer onlinepdf configuration'),
+    'type' => MENU_NORMAL_ITEM,
+    'file' => 'onlinepdf.admin.inc',
+  );
+    return $items;
+}
+
+/**
+ * Page callback
+ * Purpose: force a download of a file
+ * Arguments: fid file identifier
+ */  
+function onlinepdf_force_download($fid = FALSE) {
+    //load file object from fid argument when fid is given and fid represents a file object
+    if ($fid && file_load($fid))
+    {
+        $file = file_load($fid);
+        
+        //extract filename from uri stream wrapper
+        $filename = basename(drupal_realpath($file->uri));
+        //send the file to the browser as an attachment
+        file_transfer($file->uri, array('Content-disposition' => 'attachment; filename='.$filename));
+        return;
+    }
+    //throw error and return a page not found html error.
+    watchdog('onlinepdf', 'no file object found. fid argument: %ffid', array('%fid' => $fid));
+    drupal_set_message (t("no file object found. fid argument: $fid"), 'error');
+    return drupal_not_found();
+}
+
+/**
+ * Page callback
+ * function: force a zip file to download generated on the fly with files from current node filefield
+ * arguments: filefield name (defaults to field_download)
+ * 
+ */  
+function onlinepdf_zip($filefield = 'field_download') {
+  //loads node object from current path
+  $node = menu_get_object("node", 1, current_path());
+  //check if the filefield exists and contains file records
+  if (isset($node->{$filefield}) && isset($node->{$filefield}[LANGUAGE_NONE]) > 0)
+  {
+    //create zip archive and add the files to it
+    $zip = new ZipArchive();
+    $uri = 'public://zip/'.mt_rand().'.zip';
+    $filepath = drupal_realpath($uri);
+    $filename = basename($filepath);
+    //could not create zip file, throw error and 404
+    if ($zip->open($filepath, ZipArchive::CREATE)!==TRUE) {
+        drupal_set_message(t('Could not open %filename', array('%filename' => $filename)), 'error');
+        watchdog("onlinepdf", 'Could not open %filename', array('%filename' => $filename), WATCHDOG_ERROR);
+    }
+    foreach ($node->field_download[LANGUAGE_NONE] as $file)
+    {
+        if (!$zip->addFile(drupal_realpath($file['uri']), $file['filename']))
+        {
+            //error in adding file to zip. throw error, discard zip and give 404
+            drupal_set_message(t('Could not add %filename to zip archive', array('%filename' => $file['filename'])), 'error');
+            watchdog("onlinepdf", 'Could not add %filename to zip archive', array('%filename' => $filename), WATCHDOG_ERROR);
+            $zip->close();
+            unlink($filepath);
+            return drupal_not_found();
+        }
+    }
+    $zip->close();
+    //create file object from zip file
+    $file = new stdClass;
+    $file->filename = $filename;
+    $file->uri = $uri;
+    $file->filemime = file_get_mimetype($uri);
+    $file->filesize = filesize($filepath);
+    //set file as temporary. Will be deleted after 6 hours by cron  
+    $file->status = 0;
+    $file = file_save($file);
+    file_transfer($file->uri, array('Content-disposition' => 'attachment; filename='.$filename));
+    return;
+  }
+  else {
+    //no filefield with file records found, throw 404
+    return drupal_not_found();
+  }
+}
+
+
+/**
+ * hook_entity_insert()
+ *
+ * Update any of our fields when a fieldable entity is being updated.
+ *
+ * @param stdclass $entity
+ * @param string $entity_type
+ */
+function onlinepdf_entity_insert($entity, $entity_type) {
+  return onlinepdf_entity_update($entity, $entity_type);
+}
+
+/**
+ * @param $entity
+ * @param $entity_type
+ */
+function onlinepdf_entity_update($entity, $entity_type)
+{
+    
+    $field_lang = entity_language($entity_type, $entity);
+    $nul = null;
+    list($id, $vid, $bundle) = entity_extract_ids($entity_type, $entity);
+    $params = array(
+        'entity' => $entity, // Don't actually need the whole thing, just the id really.
+        'entity_type' => $entity_type,
+        'entity_id' => $id,
+        'starttime' => time(),
+    );
+    
+    if (isset($entity->type) && $entity->type == "pdf_viewer") {
+        include_once "onlinepdf_update_pdfviewer.inc";
+    }
+    
+    if (isset($entity->type) && $entity->type == "pdf_online")
+    {
+
+        foreach ($entity->field_file[LANGUAGE_NONE] as $item)
+        {
+           $file[] = file_load($item['fid']);
+        }
+        include_once "onlinepdf_update_to_image.inc";
+    }
+    
+     
+    //run batch operations
+    if (isset($operations) && count($operations) > 0)
+    {
+        $count = count($operations);
+        batch_set(array(
+            'title'            => t('Converting file(s), %count operations', array('%count' => $count)),
+            'operations'       => $operations,
+            'finished'         => 'onlinepdf_batch_finished',
+            'progress_message' => t('Processed @current out of @total.<br>@estimate remaining'),
+        ));
+        
+    }
+     //TODO: this can be deleted. check for similar code and other trash
+     //if (isset($dest))
+     //{
+     //           foreach ($dest as $path)
+     //           {
+     //               $cmd = "unlink $path";
+     //               $filename = basename($path);
+     //               $operations[] = array('onlinepdf_batch_exec_process', array($cmd, t('deleting temporary file %filename', array('%filename' => $filename)), $params, $nul));
+     //           }
+     //}
+     
+}
+
+
+
+//returns managed file object or false if something went wrong
+function create_fileobject($filepath)
+{
+    $file = (object) array(
+    'uri' => $filepath,
+    'filemime' => file_get_mimetype($filepath),
+    'status' => 1,
+    'display' => 1,
+    );
+    $filename = basename($filepath);
+    $file = file_copy($file, 'public://output');
+    
+    if(!$file) drupal_set_message(t('Could not copy %filename', array('%filename' => $filename)), 'error');
+    if(!$file) watchdog("onlinepdf", 'Could not copy %filename', array('%filename' => $filepath), WATCHDOG_ERROR);
+    return $file;
+}
+
+function onlinepdf_cron(){
+    $limit = time() - variable_get('onlinepdf_max_age', 3200);
+    $q = db_query("SELECT node.nid as nid from node WHERE node.changed < :time AND node.type = 'pdf_online' LIMIT 0,1000", array(':time' => $limit));
+    foreach ($q as $expired)
+    {
+        watchdog("cron", "deleting node ".$expired->nid);
+       node_delete($expired->nid);
+    }
+    $limit = time() - 600000; //1 week
+    $q = db_query("SELECT node.nid as nid from node WHERE node.changed < :time AND node.type = 'pdf_viewer' LIMIT 0,1000", array(':time' => $limit));
+    foreach ($q as $expired)
+    {
+        $expirednode = node_load($expired->nid);
+        $uri = "public://html/".basename($expirednode->field_pdf[LANGUAGE_NONE][0]['filename'],".pdf");
+        file_unmanaged_delete_recursive($uri);
+        watchdog("cron", "deleting viewer node ".$expired->nid);
+       node_delete($expired->nid);
+    }
+    //delete all .ppm and .pbm files in tmp directory
+    foreach (glob(drupal_realpath('public://tmp').'/*.p*m') as $file)
+    {
+        unlink ($file);
+    }
+}
+
+function _unique_id($l = 5) {
+    return substr(md5(uniqid(mt_rand(), true)), 0, $l);
+}
+
+//determine dpi value from node fields
+function dpi($preset, $value) {
+    
+    if ($preset == -1)
+    {
+        return $value;
+    }
+    return $preset;
+}
+
+//determine scaling factor from node fields
+function resize($entity) {
+    if ($entity->field_supersamping_conversion[LANGUAGE_NONE][0]['value'] || $entity->field_dpi_setting[LANGUAGE_NONE][0]['value'] == 400)
+    {
+        $resize = round((100 / dpi($entity->field_dpi_setting[LANGUAGE_NONE][0]['value'], $entity->field_dpi[LANGUAGE_NONE][0]['value'])) * 100, 2);
+        return $resize;
+    }
+    else {
+        return $entity->field_resize_in_percent[LANGUAGE_NONE][0]['value'];
+    }
+}
+
+
+
+
