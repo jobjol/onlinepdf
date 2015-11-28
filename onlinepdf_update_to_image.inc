@@ -126,7 +126,7 @@
                             $cmd = "convert -density $dpi {$abpath}[%n] $quality $tempjpg";
                         }
                         else {
-                            $cmd = "convert -density $dpi {$abpath}[%n] -background \"#FFFFFF\" -alpha Deactivate -resize $resize  +profile '*' -profile USWebCoatedSWOP.icc -profile sRGB.icm $quality $tempjpg";
+                            $cmd = "convert -density $dpi {$abpath}[%n] -background \"#FFFFFF\" -alpha Deactivate -resize $resize $quality $tempjpg";
 
                         }
                         
