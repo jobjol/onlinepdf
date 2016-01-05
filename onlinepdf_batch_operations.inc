@@ -7,7 +7,7 @@ function onlinepdf_batch_finished($success, $results, $operations) {
      if ($success) {
         // Here we do something meaningful with the results.
         if (!(isset($results['to_attach']) && count($results['to_attach']))) {
-            drupal_set_message(t('Something went wrong! No files generated. Site administrator is noticed.', array('%filename' => $filename)), 'error');
+            drupal_set_message(t('Something went wrong! No files generated. Site administrator is noticed.'), array(), 'error');
             watchdog('onlinepdf', 'No files produced from processing document', array(), WATCHDOG_NOTICE);
             return;
         }
@@ -18,14 +18,16 @@ function onlinepdf_batch_finished($success, $results, $operations) {
         // Don't use the entity as given, load it again as things may have happened
         // to it since the batch job began.
         $entity = entity_load_unchanged($entity_type, $entity_id);
+
         if (is_object($entity)) {
           $field_lang = field_language($entity_type, $entity, $field_name);
           
           // This removes the existing images by emptying the list.
           // The (re?) attaches the generated ones.
-          $node->field_download[$field_lang] = array();
+
           ksort($results['to_attach'], SORT_NUMERIC);
           $node = node_load($entity_id);
+          $node->field_download[$field_lang] = array();
           foreach ($results['to_attach'] as $file) {
             $file2 = str_replace("*", "", $file);
             exec("convert $file*.ppm $file2");
@@ -340,13 +342,13 @@ function onlinepdf_batch_sshget_process($docname, $outputpath,  $message, $param
                         if (!$remote = fopen("ssh2.sftp://$resSftp/$docname", 'r'))
                         {
                             watchdog('onlinepdf', "Failed to open remote file: $docname\n",array(),WATCHDOG_ERROR);
-                            continue;
+
                         }
                         //write to local file
                         if (!$local = fopen($outputpath, 'w'))
                         {
                             watchdog('onlinepdf', "Failed to create local file: $docname\n",array(),WATCHDOG_ERROR);
-                            continue;
+
                         }
                         $read = 0;
                         $filesize = filesize("ssh2.sftp://$resSftp/$docname");

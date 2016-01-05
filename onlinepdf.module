@@ -13,6 +13,12 @@ function onlinepdf_menu() {
       'access callback' => TRUE,
       'type' => MENU_LOCAL_TASK,
     );
+  $items['node/%node/email'] = array(
+    'title' => t('Send as email attachment'),
+    'page callback' => 'onlinepdf_email',
+    'access callback' => TRUE,
+    'type' => MENU_LOCAL_TASK,
+  );
     $items['dwnld'] = array(
       'title' => 'Download direct',
       'page callback' => 'onlinepdf_force_download',
@@ -107,6 +113,61 @@ function onlinepdf_zip($filefield = 'field_download') {
   }
 }
 
+/**
+ * Page callback
+ * function: Add a link to the emailattachment service.
+ * arguments: filefield name (defaults to field_download)
+ *
+ */
+function onlinepdf_email($filefield = 'field_download') {
+  //loads node object from current path
+  $node = menu_get_object("node", 1, current_path());
+  //check if the filefield exists and contains file records
+  if (isset($node->{$filefield}) && isset($node->{$filefield}[LANGUAGE_NONE]) > 0)
+  {
+    //create zip archive and add the files to it
+    $zip = new ZipArchive();
+    $uri = 'public://zip/'.mt_rand().'.zip';
+    $filepath = drupal_realpath($uri);
+    $filename = basename($filepath);
+    //could not create zip file, throw error and 404
+    if ($zip->open($filepath, ZipArchive::CREATE)!==TRUE) {
+      drupal_set_message(t('Could not open %filename', array('%filename' => $filename)), 'error');
+      watchdog("onlinepdf", 'Could not open %filename', array('%filename' => $filename), WATCHDOG_ERROR);
+    }
+    foreach ($node->field_download[LANGUAGE_NONE] as $file)
+    {
+      if (!$zip->addFile(drupal_realpath($file['uri']), $file['filename']))
+      {
+        //error in adding file to zip. throw error, discard zip and give 404
+        drupal_set_message(t('Could not add %filename to zip archive', array('%filename' => $file['filename'])), 'error');
+        watchdog("onlinepdf", 'Could not add %filename to zip archive', array('%filename' => $filename), WATCHDOG_ERROR);
+        $zip->close();
+        unlink($filepath);
+        return drupal_not_found();
+      }
+    }
+    $zip->close();
+    //create file object from zip file
+    $file = new stdClass;
+    $file->filename = $filename;
+    $file->uri = $uri;
+    $file->filemime = file_get_mimetype($uri);
+    $file->filesize = filesize($filepath);
+    //set file as temporary. Will be deleted after 6 hours by cron
+    $file->status = 0;
+    $file = file_save($file);
+    drupal_goto('http://emailattachment.net/?send='.file_create_url($file->uri));
+    return;
+
+
+
+  }
+  else {
+    //no filefield with file records found, throw 404
+    return drupal_not_found();
+  }
+}
 
 /**
  * hook_entity_insert()

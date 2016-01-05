@@ -106,7 +106,7 @@ function _onlinepdf_pdfinfo($file, $password)
   {
       form_set_error("field_file", t('Error reading PDF page size for %filename', array('%filename' => $file->filename)));
       watchdog('onlinepdf', 'Form error reading PDF page size for %filename', array('%filename' => $file->filename), WATCHDOG_NOTICE);
-      $out = FALSE; 
+      $out = FALSE;
   }
   return $out;
 }
