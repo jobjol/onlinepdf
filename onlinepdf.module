@@ -3,10 +3,12 @@ include_once "onlinepdf_form_alter.inc";
 include_once "onlinepdf_node_validate.inc";
 include_once "onlinepdf_batch_operations.inc";
 
-/**
+
+/*
 * Implementation of hook_menu
 */
 function onlinepdf_menu() {
+
     $items['node/%node/zip'] = array(
       'title' => t('Download as ZIP'),
       'page callback' => 'onlinepdf_zip',
@@ -20,7 +22,13 @@ function onlinepdf_menu() {
     'type' => MENU_LOCAL_TASK,
   );
     $items['dwnld'] = array(
-      'title' => 'Download direct',
+      'title' => t('Download'),
+      'page callback' => 'onlinepdf_download',
+      'access callback' => TRUE,
+      'type' => MENU_CALLBACK,
+    );
+    $items['download-direct'] = array(
+      'title' => t('Download'),
       'page callback' => 'onlinepdf_force_download',
       'access callback' => TRUE,
       'type' => MENU_CALLBACK,
@@ -39,6 +47,31 @@ function onlinepdf_menu() {
 
 /**
  * Page callback
+ * Purpose: show download links
+ * Arguments: fid file identifier
+ */  
+function onlinepdf_download($fid = FALSE) {
+    //load file object from fid argument when fid is given and fid represents a file object
+    if ($fid && file_load($fid))
+    {
+        $file = file_load($fid);
+        
+        //extract filename from uri stream wrapper
+        $filename = basename(drupal_realpath($file->uri));
+        //send the file to the browser as an attachment
+        //file_transfer($file->uri, array('Content-disposition' => 'attachment; filename='.$filename));
+        
+        $file->url = file_create_url($file->uri);
+        return theme('file_download', array('file' => $file));
+    }
+    //throw error and return a page not found html error.
+    watchdog('onlinepdf', 'no file object found. fid argument: %ffid', array('%fid' => $fid));
+    drupal_set_message (t("no file object found. fid argument: $fid"), 'error');
+    return drupal_not_found();
+}
+
+/**
+ * Page callback
  * Purpose: force a download of a file
  * Arguments: fid file identifier
  */  
@@ -52,12 +85,25 @@ function onlinepdf_force_download($fid = FALSE) {
         $filename = basename(drupal_realpath($file->uri));
         //send the file to the browser as an attachment
         file_transfer($file->uri, array('Content-disposition' => 'attachment; filename='.$filename));
-        return;
     }
     //throw error and return a page not found html error.
     watchdog('onlinepdf', 'no file object found. fid argument: %ffid', array('%fid' => $fid));
     drupal_set_message (t("no file object found. fid argument: $fid"), 'error');
     return drupal_not_found();
+}
+
+function onlinepdf_zip_callback() {
+    return "test";
+}
+
+function onlinepdf_theme() {
+  return array (
+    'file_download' => array (
+      'variables' => array('file' => $file),
+      'template' => 'file-download' ,
+      'path' => drupal_get_path('module', 'onlinepdf').'/templates',
+    ),
+  );
 }
 
 /**
@@ -104,8 +150,11 @@ function onlinepdf_zip($filefield = 'field_download') {
     //set file as temporary. Will be deleted after 6 hours by cron  
     $file->status = 0;
     $file = file_save($file);
-    file_transfer($file->uri, array('Content-disposition' => 'attachment; filename='.$filename));
-    return;
+    $file->url = file_create_url($file->uri);
+    //file_transfer($file->uri, array('Content-disposition' => 'attachment; filename='.$filename));
+    
+    return theme('file_download', array('file' => $file));
+    
   }
   else {
     //no filefield with file records found, throw 404
@@ -156,8 +205,9 @@ function onlinepdf_email($filefield = 'field_download') {
     $file->filesize = filesize($filepath);
     //set file as temporary. Will be deleted after 6 hours by cron
     $file->status = 0;
+    
     $file = file_save($file);
-    drupal_goto('http://emailattachment.net/?send='.file_create_url($file->uri));
+    drupal_goto('https://emailattachment.net/?send='.file_create_url($file->uri));
     return;
 
 
@@ -187,7 +237,7 @@ function onlinepdf_entity_insert($entity, $entity_type) {
  */
 function onlinepdf_entity_update($entity, $entity_type)
 {
-    
+
     $field_lang = entity_language($entity_type, $entity);
     $nul = null;
     list($id, $vid, $bundle) = entity_extract_ids($entity_type, $entity);
@@ -209,7 +259,17 @@ function onlinepdf_entity_update($entity, $entity_type)
         {
            $file[] = file_load($item['fid']);
         }
-        include_once "onlinepdf_update_to_image.inc";
+
+
+      switch (variable_get('site_name', 'Drupal'))
+      {
+        case "PDFJPG":
+          include_once "onlinepdf_update_to_image.inc";
+          break;
+        default:
+          break;
+      }
+
     }
     
      
