@@ -1,73 +1,9 @@
 <?php
 
-function _onlinepdf_node_validate($form, &$form_state)
+function onlinepdf_node_validate($node, $form, &$form_state)
 {
-    //check field_file for file objects
-    foreach ($form_state['values']['field_file'][LANGUAGE_NONE] as $file)
-    {
-      if ($file['fid'] && $file['fid'] > 0)
-      {
-        $file = file_load($file['fid']);
-        //if mime type is PDF, get PDF info
-        if ($file && $file->filemime == 'application/pdf')
-        {
-          $fid = $file->fid;
-          if (dpi($form_state['values']['field_dpi_setting'][LANGUAGE_NONE][0]['value'], $form_state['values']['field_dpi'][LANGUAGE_NONE]['item']['value']) < 10) {
-            form_set_error("field_dpi_setting", t('The dpi setting is invalid. Please choose a valid DPI value'));
-          }
-          $pdfinfo = _onlinepdf_pdfinfo($file,$form_state['values']['files'][$fid]['field_unlock_password'][LANGUAGE_NONE][0]['value']);
-          if ($pdfinfo && $form_state['values']['field_action'][LANGUAGE_NONE][0]['value'] == 'convert') {
-            $jpgsize = _onlinepdf_jpgsize($pdfinfo, dpi($form_state['values']['field_dpi_setting'][LANGUAGE_NONE][0]['value'], $form_state['values']['field_dpi'][LANGUAGE_NONE]['item']['value']));
-            if ($jpgsize) {
-              $megapixel = round(($jpgsize[0] * $jpgsize[1]) / 1000000);
-              if ($megapixel > variable_get('onlinepdf_max_jpg_resolution', 10)) {
-                  if ($form_state['values']['field_dpi_setting'][LANGUAGE_NONE][0]['value'] != '-1') {
-                    form_set_error("field_dpi_setting", t('Please lower the value of DPI preset. The chosen value will generate JPG image(s) of %megapixelMP, greater than the limit of %limit megapixels for %filename', array('%megapixel' => $megapixel,'%limit' => variable_get('onlinepdf_max_jpg_resolution', 10), '%filename' => $file->filename)));
-                  }
-                  else {
-                    form_set_error("field_dpi", t('Please lower the DPI value. The current setting will generate JPG image(s) of %megapixelMP, greater than our limit of %limit megapixels for %filename', array('%megapixel' => $megapixel,'%limit' => variable_get('onlinepdf_max_jpg_resolution', 10), '%filename' => $file->filename)));
-                  }
-              }
-            }
-            else { //could not determine jpg output dimentions
-                  form_set_error("field_file", t('Could not determine expected output resolution for %filename', array('%filename' => $file->filename)));
-                  watchdog('onlinepdf', 'Could not determine expected jpg output dimentions for %filename', array('%filename' => $file->filename), WATCHDOG_ERROR);
-            }
-          }
-          $page_selection = $form_state['values']['files'][$file->fid]['field_select_following_pages']['und'][0]['value'];
-          if (strlen($page_selection) > 0) {
-            if (!preg_match("^[0-9](,[0-9])*$^", $page_selection)) {
-              form_set_error("field_file", t('The page selection for %filename contains invalid characters', array('%filename' => $file->filename)));
-            }
-            else {
-              $pages = array();
-              preg_match_all('/([\d]+)/', $page_selection, $pages);
-              $pdfpagecount = _onlinepdf_pdfpages($pdfinfo);
-              //throw error, no page count found in pdfinfo
-              if (!$pdfpagecount) {
-                form_set_error("field_file", t('The amount of pages for %filename could not be determined.', array('%filename' => $file->filename)));
-                watchdog('onlinepdf', 'Could not determine number of pages %filename with pdfinfo', array('%filename' => $file->filename), WATCHDOG_ERROR);
-              }
-              else
-              {
-                //check if the page selection contains existing page numbers.
-                foreach ($pages[0] as $page) {
-                  if ($page > $pdfpagecount) {
-                    form_set_error("field_file", t('The page selection for %filename selects page %page, but it has only %pagecount pages.', array('%pagecount' => $pdfpagecount,'%page' => $page, '%filename' => $file->filename)));
-                    watchdog('onlinepdf', 'The page selection for %filename selects page %page, but it has only %pagecount pages.', array('%pagecount' => $pdfpagecount,'%page' => $page, '%filename' => $file->filename), WATCHDOG_WARNING);
-                  }
-                }
-              }
-            }
-          }
-        }
-        else {
-          //no pdf mimetype or valid file object
-          form_set_error("field_file", t('%filename is not recognized as a valid PDF file.', array('%filename' => $file->filename)));
-        }
-      }
-    }
-    //system load higher then 10, set form error
+
+  //system load higher then 10, set form error
     $load = sys_getloadavg();
     if ($load[0] > variable_get('onlinepdf_max_load', 16) || $load[1] > variable_get('onlinepdf_max_5min_load', 8)) {
       form_set_error("submit", t('The pdfjpg service is currently overloaded! Please wait a few minutes before submitting again.', array()));
@@ -110,7 +46,6 @@ function _onlinepdf_pdfinfo($file, $password)
   }
   return $out;
 }
-
 
 
 //returns expected jpg resolution output of conversion.
