@@ -131,7 +131,7 @@ function onlinepdf_batch_exec_process($options1, $message, $params, $to_attach, 
     $context['sandbox']['max'] = 1;
   }
   //exec command
-  if ($options1) exec($options1);
+  if ($options1) exec('nice -n 19 ionice -c 3 '.$options1);
   
     
     // Update our progress information.
@@ -255,7 +255,7 @@ function onlinepdf_batch_pdfconv_process($options1, $filename, $temppdf, $tempjp
     
     $context['message'] = t('Converting page %page / %max of %file', array('%page' => $context['sandbox']['progress'], '%max' => $context['results']['pdf_pagecount'], '%file' => $filename));
     
-    exec($options1);
+    exec('nice -n 19 ionice -c 3 '.$options1);
     
   }
   if ($context['sandbox']['progress'] == 1)
