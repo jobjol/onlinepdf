@@ -2,14 +2,13 @@
 
 function onlinepdf_node_validate($node, $form, &$form_state)
 {
-
   //system load higher then 10, set form error
     $load = sys_getloadavg();
     if ($load[0] > variable_get('onlinepdf_max_load', 16) || $load[1] > variable_get('onlinepdf_max_5min_load', 8)) {
       form_set_error("submit", t('The pdfjpg service is currently overloaded! Please wait a few minutes before submitting again.', array()));
       watchdog('load', 'The systemload is %load! Conversion process on hold.', array('%load' => $load[0]), WATCHDOG_WARNING);
     };
-    $form_state['submit_handlers'][] = '_custom_request_node_disable_msg';
+    //$form_state['submit_handlers'][] = '_custom_request_node_disable_msg';
 }
 
 //TODO finish the created message removal
