@@ -1,7 +1,8 @@
 <?php
-include_once "onlinepdf_form_alter.inc";
-include_once "onlinepdf_node_validate.inc";
-include_once "onlinepdf_batch_operations.inc";
+include_once ( dirname(__FILE__)."/onlinepdf_form_alter.inc");
+include_once ( dirname(__FILE__)."/onlinepdf_node_validate.inc");
+include_once ( dirname(__FILE__)."/onlinepdf_batch_operations.inc");
+include_once ( dirname(__FILE__)."/functions/onlinepdf2pdf.inc");
 
 
 /*
@@ -99,7 +100,6 @@ function onlinepdf_zip_callback() {
 function onlinepdf_theme() {
   return array (
     'file_download' => array (
-      'variables' => array('file' => $file),
       'template' => 'file-download' ,
       'path' => drupal_get_path('module', 'onlinepdf').'/templates',
     ),
@@ -237,7 +237,6 @@ function onlinepdf_entity_insert($entity, $entity_type) {
  */
 function onlinepdf_entity_update($entity, $entity_type)
 {
-
     $field_lang = entity_language($entity_type, $entity);
     $nul = null;
     list($id, $vid, $bundle) = entity_extract_ids($entity_type, $entity);
@@ -266,7 +265,11 @@ function onlinepdf_entity_update($entity, $entity_type)
         case "PDFJPG":
           include_once "onlinepdf_update_to_image.inc";
           break;
+        case "JPG to PDF":
+          include_once "onlinepdf_update_to_pdf.inc";
+          break;
         default:
+
           break;
       }
 
@@ -367,6 +370,9 @@ function resize($entity) {
         return $entity->field_resize_in_percent[LANGUAGE_NONE][0]['value'];
     }
 }
+
+
+
 
 
 
