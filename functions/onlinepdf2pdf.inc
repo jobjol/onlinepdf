@@ -13,23 +13,24 @@ function _onlinepdf_imgsizepdf($entity, $image) {
   //image will get rotated after resize and crop, take this into account
   if ($image->field_rotation[LANGUAGE_NONE][0]['value'] == "90"
     | $image->field_rotation[LANGUAGE_NONE][0]['value'] == "-90") {
-    array_flip($imagesize);
+    $imagesize = array_reverse($imagesize);
   }
 
   if ($entity->field_page_size[LANGUAGE_NONE][0]['value'] === 'adapt') {
     //calculate pagesize from img resolution
     if ($entity->field_resolution_of_the_images[LANGUAGE_NONE][0]['value'] > 0) {
-      $pagesize[0] = round($imagesize[0] / $entity->field_resolution_of_the_images[LANGUAGE_NONE][0]['value'] * 25.4);
-      $pagesize[1] = round($imagesize[1] / $entity->field_resolution_of_the_images[LANGUAGE_NONE][0]['value'] * 25.4);
+      $pagesize[0] = round(($imagesize[0] * $entity->field_resolution_of_the_images[LANGUAGE_NONE][0]['value']) / 25.4);
+      $pagesize[1] = round(($imagesize[1] * $entity->field_resolution_of_the_images[LANGUAGE_NONE][0]['value']) / 25.4);
     }
     else {
+
       $pagesize[0] = false;
       $pagesize[1] = false;
     }
   }
   elseif ($entity->field_page_size[LANGUAGE_NONE][0]['value'] == 'Set') {
     $pagesize[0] = $entity->field_width[LANGUAGE_NONE][0]['value'];
-    $pagesize[1] = $entity->field_width[LANGUAGE_NONE][0]['value'];
+    $pagesize[1] = $entity->field_height[LANGUAGE_NONE][0]['value'];
   }
   else {
     $pagesize = explode('x',$entity->field_page_size[LANGUAGE_NONE][0]['value']);
@@ -39,15 +40,16 @@ function _onlinepdf_imgsizepdf($entity, $image) {
   switch ($entity->field_page_orientation[LANGUAGE_NONE][0]['value']) {
     case 'none':
       if ($imagesize[0] > $imagesize[1]) {
-        array_flip($pagesize);
+        $pagesize = array_reverse($pagesize);
       }
       break;
     case 'Landscape':
-      array_flip($pagesize);
+      $pagesize = array_reverse($pagesize);
       break;
     default:
       break;
   }
+
   $boxsize[0] = $pagesize[0];
   $boxsize[1] = $pagesize[1];
   $cropx = false;
@@ -72,30 +74,29 @@ function _onlinepdf_imgsizepdf($entity, $image) {
 
     //transform boxsize to pixels
     if ($entity->field_resolution_of_the_images[LANGUAGE_NONE][0]['value'] > 0) {
-      $boxsize[0] = round($boxsize[0] / $entity->field_resolution_of_the_images[LANGUAGE_NONE][0]['value'] * 25.4);
-      $boxsize[0] = round($boxsize[0] / $entity->field_resolution_of_the_images[LANGUAGE_NONE][0]['value'] * 25.4);
+
+      $boxsize[0] = round(($boxsize[0] * $entity->field_resolution_of_the_images[LANGUAGE_NONE][0]['value']) / 25.4);
+      $boxsize[1] = round(($boxsize[1] * $entity->field_resolution_of_the_images[LANGUAGE_NONE][0]['value']) / 25.4);
+
     }
     else {
-      //no DPI given. make boxsize large enough to fit image resolution
-      //
-      //TODO test this
-      $hratio = round($imagesize[1] / $boxsize[1]);
-      $wratio = round($imagesize[0] / $boxsize[0]);
-      $ratio = min($hratio, $wratio);
-
-      //if the source is smaller than the destination size,
-      //don't resize -- add a margin instead
-      //(that is, dont shrink boxes)
-      if($ratio < 1.0) {
-        $ratio = 1.0;
-      }
-      //compute sizes
-      $sy = floor($boxsize[1] * $ratio);
-      $sx = floor($boxsize[0] * $ratio);
-      $boxsize[1] = $sy > $boxsize[1] ? $sy : false;
-      $boxsize[0] = $sx > $boxsize[0] ? $sx : false;
+      $boxsize[0] = round(($boxsize[0] * 96) / 25.4);
+      $boxsize[1] = round(($boxsize[1] * 96) / 25.4);
+      //no DPI setting
+//      $h_fact = $imagesize[0] / $boxsize[0];
+//      $v_fact = $imagesize[1] / $boxsize[1];
+//      $box_fact = min($v_fact, $h_fact);
+//      //only change boxsize when iamgesize is smaller (no upscale)
+//      if ($box_fact > 1) {
+//        $pagesize[1] = $boxsize[1] = round($boxsize[1] * $box_fact);
+//        $pagesize[0] = $boxsize[0] = round($boxsize[0] * $box_fact);
+//
+//      }
+//      if ($entity->field_pagemargin[LANGUAGE_NONE][0]['value'] > 0) {
+//        $pagesize[0] += (2 * ($entity->field_pagemargin[LANGUAGE_NONE][0]['value']) * 96);
+//        $pagesize[1] +- (2 * ($entity->field_pagemargin[LANGUAGE_NONE][0]['value']) * 96);
+//      }
     }
-
     //if image resolution is set, calculate pixels and crop. Else only crop and keep image res.
     switch ($entity->field_scaling[LANGUAGE_NONE][0]['value']) {
       case 1:
@@ -107,8 +108,12 @@ function _onlinepdf_imgsizepdf($entity, $image) {
         $v_fact = $boxsize[1] / $imagesize[1];
         $h_fact = $boxsize[0] / $imagesize[0];
         $im_fact = min($v_fact, $h_fact);
-        $imagesize[1] = round($imagesize[1] * $im_fact);
-        $imagesize[0] = round($imagesize[0] * $im_fact);
+
+        //only change image size when boxsize is smaller (no upscale)
+        if ($im_fact < 1) {
+          $imagesize[1] = round($imagesize[1] * $im_fact);
+          $imagesize[0] = round($imagesize[0] * $im_fact);
+        }
         break;
       case 3:
         //scale and crop to page width
@@ -125,29 +130,40 @@ function _onlinepdf_imgsizepdf($entity, $image) {
       case 5:
         //scale and crop to fill page
         //compute resize ratio
-        $hratio = round($boxsize[1] / $imagesize[1]);
-        $wratio = round($boxsize[0] / $imagesize[0]);
-        $ratio = min($hratio, $wratio);
+        //$pagesize[0] = round(($pagesize[0] * $entity->field_resolution_of_the_images[LANGUAGE_NONE][0]['value']) / 25.4);
+        //$pagesize[1] = round(($pagesize[1] * $entity->field_resolution_of_the_images[LANGUAGE_NONE][0]['value']) / 25.4);
 
-        //if the source is smaller than the thumbnail size,
-        //don't resize -- add a margin instead
-        //(that is, dont magnify images)
-        if($ratio > 1.0) {
-          $ratio = 1.0;
-        }
-        //compute sizes
-        $sy = floor($imagesize[1] * $ratio);
-        $sx = floor($imagesize[0] * $ratio);
-        $cropy = $sy > $imagesize[1] ? $sy : false;
-        $cropx = $sx > $imagesize[0] ? $sx : false;
+//          $hratio = ($pagesize[1] / $imagesize[1]);
+//
+//        $wratio = ($pagesize[0] / $imagesize[0]);
+//        $ratio = min($hratio, $wratio);
+//
+//        //if the source is smaller than the thumbnail size,
+//        //don't resize -- add a margin instead
+//        //(that is, dont magnify images)
+//        if($ratio > 1.0) {
+//          //$ratio = 1.0;
+//        }
+//        dsm($ratio);
+//        //compute sizes
+//        $sy = floor($imagesize[1] * $ratio);
+//        $sx = floor($imagesize[0] * $ratio);
+//        $cropy = $sy < $imagesize[1] ? $sy : false;
+//        $cropx = $sx < $imagesize[0] ? $sx : false;
     }
 
   }
   else { //no pagesize, boxsize, no img resolution, no resize or crop
     return false;
   }
-
-
+  if ($entity->field_resolution_of_the_images[LANGUAGE_NONE][0]['value'] > 0) {
+    $pagesize[0] = round(($pagesize[0] * $entity->field_resolution_of_the_images[LANGUAGE_NONE][0]['value']) / 25.4);
+    $pagesize[1] = round(($pagesize[1] * $entity->field_resolution_of_the_images[LANGUAGE_NONE][0]['value']) / 25.4);
+  }
+  else {
+    $pagesize[0] = round(($pagesize[0] * $entity->field_resolution_of_the_images[LANGUAGE_NONE][0]['value']) / 25.4);
+    $pagesize[1] = round(($pagesize[1] * $entity->field_resolution_of_the_images[LANGUAGE_NONE][0]['value']) / 25.4);
+  }
 
   return array($imagesize[0], $imagesize[1],
     $cropx, $cropy,
