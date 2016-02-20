@@ -191,7 +191,7 @@ function onlinepdf_batch_ocr_merge($filename, $message, $params, $to_attach, &$c
 }
 
 //execute ssh commands at remote server
-function onlinepdf_batch_ssh_exec_process($remote_cmd, $conn, $message, $params, $to_attach, &$context) {
+function onlinepdf_batch_ssh_exec_process($remote_cmd, $conn, $message, $params, $to_attach = false, $reset_attach = false, &$context) {
   
   if (!isset($context['sandbox']['progress'])) {
     $context['sandbox']['progress'] = 0;
@@ -225,11 +225,15 @@ function onlinepdf_batch_ssh_exec_process($remote_cmd, $conn, $message, $params,
   {
     $context['results']['params'] = $params;
   }
-  
+  if ($reset_attach)
+  {
+    $context['results']['to_attach'] = null;
+  }
   if ($to_attach)
   {
     $context['results']['to_attach'][] = $to_attach;
   }
+
   
   // Inform the batch engine that we are finished,
   // and provide an estimation of the completion level we reached.
