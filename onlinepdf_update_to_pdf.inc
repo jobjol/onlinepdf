@@ -7,7 +7,7 @@ foreach ($file as $item) {
   {
     $tempimage = file_unmanaged_copy($item->uri, '/tmp');
     $imagesize = getimagesize($tempimage);
-    $filename = basename($tempimage);
+    $filename = basename($tempimage, '.jpg');
     $dest[] = "/tmp/".$filename.".pdf";
     $temppdf = end($dest);
 
@@ -44,37 +44,69 @@ foreach ($file as $item) {
         $cropx, $cropy,
         $pagesize[0], $pagesize[1],
         $boxsize[0], $boxsize[1]) = $dimentions;
+      $offsetx = 0;
+      $offsety = 0;
+      $offsetx = round(($boxsize[0] - $imagesize[0]) /2);
+      $offsety = round(($boxsize[1] - $imagesize[1]) /2);
+      $size = "-size {$imagesize[0]}x{$imagesize[1]}";
       //image should be cropped
-      if ($cropx || $cropy) {
-        $cropx = $cropx ? $cropx : $imagesize[0];
-        $cropy = $cropy ? $cropy : $imagesize[1];
-        $crop = "-gravity center -crop {$cropx}x{$cropy}+0+0";
+      if ($entity->field_scaling[LANGUAGE_NONE][0]['value'] == 5) {
+        $resize = "-resize {$boxsize[0]}x{$boxsize[1]}^ -gravity center -crop {$boxsize[0]}x{$boxsize[1]}+0+0 +repage -page {$pagesize[0]}x{$pagesize[1]} -resize {$boxsize[0]}x{$boxsize[1]} -gravity center -extent {$pagesize[0]}x{$pagesize[1]}";
       }
+      elseif ($entity->field_scaling[LANGUAGE_NONE][0]['value'] == 4) {
+        $resize = "-resize x{$boxsize[1]} -gravity center -crop {$boxsize[0]}x{$boxsize[1]}+0+0 +repage -page {$pagesize[0]}x{$pagesize[1]} -resize {$boxsize[0]}x{$boxsize[1]} -gravity center -extent {$pagesize[0]}x{$pagesize[1]}";
+      }
+      elseif ($entity->field_scaling[LANGUAGE_NONE][0]['value'] == 3) {
+        $resize = "-resize {$boxsize[0]} -gravity center -crop {$boxsize[0]}x{$boxsize[1]}+0+0 +repage -page {$pagesize[0]}x{$pagesize[1]} -resize {$boxsize[0]}x{$boxsize[1]} -gravity center -extent {$pagesize[0]}x{$pagesize[1]}";
+      }
+      elseif ($entity->field_scaling[LANGUAGE_NONE][0]['value'] == 1) {
+        $resize = "-gravity center -crop {$boxsize[0]}x{$boxsize[1]}+0+0 +repage -page {$pagesize[0]}x{$pagesize[1]} -resize {$boxsize[0]}x{$boxsize[1]} -gravity center -extent {$pagesize[0]}x{$pagesize[1]}";
+      }
+      else {
+        $resize = "-resize {$imagesize[0]}x{$imagesize[1]} -gravity center -extent {$pagesize[0]}x{$pagesize[1]}";
+      }
+
       //if image should be resized
       $original_imagesize = getimagesize(drupal_realpath($item->uri));
-      if ($imagesize[0] != $original_imagesize[0] ||
-          $imagesize[1] != $original_imagesize[1]) {
-        $resize = "-resize {$imagesize[0]}x{$imagesize[1]}";
-      }
+
+
       //if page size in mm is set
       if ($pagesize[0] && $pagesize[1]) {
+        $offsetx = 0;
+        $offsety = 0;
+        if($pagesize[0] > $boxsize[0]) {
+          $offsetx = floor(($pagesize[0] - $boxsize[0]) / 2);
+
+        }
+        //if ($boxsize[0] > $imagesize[0]) $offsetx += floor(($boxsize[0] - $imagesize[0]) / 2);
+        if($pagesize[1] > $boxsize[1]) {
+          $offsety = floor(($pagesize[1] - $boxsize[1]) / 2);
+
+        }
+        //if ($boxsize[1] > $imagesize[1]) $offsety += floor(($boxsize[1] - $imagesize[1]) / 2);
+
         $page = "-page {$pagesize[0]}x{$pagesize[1]}";
       }
       //if image DPI setting is given
       $dpi = $entity->field_resolution_of_the_images[LANGUAGE_NONE][0]['value'];
       if ($dpi > 0) {
-        $dpi = "-units PixelsPerInch -set density $dpi";
+        $dpi = "-density $dpi -units PixelsPerInch";
       }
     }
 
-
-
+    dsm($entity);
+    $attach = null;
+    if ($entity->field_convert_to[LANGUAGE_NONE][0]['value'] == 1) {
+      $attach = $temppdf;
+    }
 
     if ($entity->field_quality[LANGUAGE_NONE][0]['value'] != "0") $quality = "-quality ".$entity->field_quality[LANGUAGE_NONE][0]['value'];
-
-        $cmd = "convert $page \"$tempimage\" $imgEdits $resize $crop -gravity center $dpi $quality $temppdf";
+    //$cmd = "mogrify $imgEdits $resize $crop $tempimage";
+    //dsm($cmd);
+    //$operations[] = array('onlinepdf_batch_exec_process', array($cmd, t('Modifying image %filename', array('%filename' => $filename)), $params, $nul));
+    $cmd = "convert  \"$tempimage\" $units $resize $dpi $quality $temppdf";
     dsm($cmd);
-    $operations[] = array('onlinepdf_batch_exec_process', array($cmd, t('Converting image %filename to PDF', array('%filename' => $filename)), $params, $nul));
+    $operations[] = array('onlinepdf_batch_exec_process', array($cmd, t('Converting image %filename to PDF', array('%filename' => $filename)), $params, $attach));
 
 
 
@@ -151,11 +183,6 @@ foreach ($file as $item) {
           $pagemargin = "--scale '{$pagemargin}'";
       }
 
-      //Add frame
-      $frame = "";
-      if(isset($entity->field_frame[LANGUAGE_NONE][0]['value']) && $entity->field_frame[LANGUAGE_NONE][0]['value'] == true)
-      { $frame = "--frame true"; }
-
       //rescale paper without rescaling content
       //exec("pdfjoin $abpath --paper letterpaper --fitpaper false --outfile $abpath");
 
@@ -218,7 +245,7 @@ foreach ($file as $item) {
           list($pageWidth,$pageHeight) = array($pageHeight,$pageWidth);
       }
       $margin = $entity->field_pagemargin[LANGUAGE_NONE][0]['value'] * 100;
-      $cmd = 'python /home/jj/scripts/DocumentConverter.py "'.
+      $cmd = 'python3 /home/jj/scripts/DocumentConverter.py "'.
       $abpath.'" "'.
       $temppdf.'" '.
       $grid.' '.
@@ -240,11 +267,40 @@ $record = $q->fetchObject();
 
 $allpdf = "";
 
-$outfile = "/tmp/online-pdf.org-".$record->nid."-"._unique_id().".pdf";
+$outfile = "/tmp/jpg-to-pdf.net-".$record->nid."-"._unique_id().".pdf";
+
 foreach ($dest as $path)
 {
     $allpdf .= "'".$path."' ";
 }
-dsm ($allpdf);
-//merge all pdf files together
-$cmd = "pdftk $allpdf cat output $outfile";
+
+//merge all pdf files together if saved as single PDF
+
+if ($entity->field_convert_to[LANGUAGE_NONE][0]['value'] != 1) {
+  $cmd = "pdftk $allpdf cat output $outfile";
+  $operations[] = array('onlinepdf_batch_exec_process', array($cmd, t('Merging pages to final PDF'), $params));
+  $nup_horizontal = $entity->field_images_per_page_horizontal[LANGUAGE_NONE][0]['value'];
+  $nup_vertical = $entity->field_images_per_page_vertical_[LANGUAGE_NONE][0]['value'];
+  if ($nup_horizontal > 1 || $nup_vertical > 1) {
+    $suffix = $nup_horizontal.'x'.$nup_vertical;
+    if ($pagesize[1] > $pagesize[0]) {
+      $landscape = '--no-landscape';
+    }
+    $cmd = "pdfnup --nup {$nup_horizontal}x{$nup_vertical} $landscape $outfile --outfile /tmp";
+
+    $nup = preg_replace('/\\.[^.\\s]{3,4}$/', '', $outfile).'-nup.pdf';
+    $operations[] = array('onlinepdf_batch_exec_process',
+                    array($cmd, t('Merging multiple pages to one'), $params, $nup));
+  }
+}
+
+
+
+//unlink all temp files
+foreach ($dest as $path)
+{
+  $cmd = "unlink $path";
+  $filename = basename($path);
+  exec ($cmd);
+  //$operations[] = array('onlinepdf_batch_exec_process', array($cmd, t('deleting temporary file %filename', array('%filename' => $filename)), $params, $nul));
+}
